@@ -1,0 +1,24 @@
+# Welcome
+
+
+## Getting clangd happy on linux 
+The Cmake command needs to explicitly mention outputting the `compile_commands.json` file. Like so:
+
+```sh
+cmake -G Ninja -S . -B build \
+       -DCMAKE_BUILD_TYPE=Debug \
+       -DCMAKE_PREFIX_PATH="$VULKAN_SDK/lib/cmake" \
+       -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+```
+
+Once the `compile_commands.json` file is made, there are additional commands in it that need deleted from the "command" field.
+1. -fmodules-ts
+2. I don't remember, I moved on too quick. clangd will show the error at the top, remove the commands it doesn't know
+
+## Building 
+Run the above cmake command from the project root, then follow up with:
+
+```sh
+cd build
+ninja
+```
