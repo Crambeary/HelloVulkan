@@ -4,14 +4,23 @@
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
+#include <vulkan/vk_platform.h>
+
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
-#include <ranges>
 #include <stdexcept>
 
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
+
+const std::vector validationLayers = {"VK_LAYER_KHRONOS_validation"};
+
+#ifdef NDEBUG
+conconstexpr bool enableValidationLayers = false;
+#else
+constexpr bool enableValidationLayers = true;
+#endif
 
 class HelloTriangleApplication {
 public:
@@ -45,6 +54,24 @@ private:
         .pEngineName = "No Engine",
         .engineVersion = VK_MAKE_VERSION(1, 0, 0),
         .apiVersion = vk::ApiVersion14};
+
+    // detect validationLayers
+    std::vector<char const *> requiredLayers;
+    if (enableValidationLayers) {
+      requiredLayers.assign(validationLayers.begin(), validationLayers.end());
+    }
+
+    auto layerProperties = context.enumerateInstanceLayerProperties();
+
+    if (std::ranges::any_of(
+            requiredLayers, [&layerProperties](auto const &requiredLayer) {
+              return std::ranges::none_of(
+                  layerProperties, [requiredLayer](auto const &layerProperty) {
+                    return strcmp(layerProperty.layerName, requiredLayer) == 0;
+                  });
+            })) {
+      throw std::runtime_error("One ormore required layers are not supported!");
+    }
 
     uint32_t glfwExtensionCount = 0;
     auto glfwExtensions =
