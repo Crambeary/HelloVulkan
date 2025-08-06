@@ -1,9 +1,12 @@
 #define GLFW_INCLUDE_VULKAN
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #include <GLFW/glfw3.h>
+#include <vector>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_enums.hpp>
 #include <vulkan/vulkan_raii.hpp>
+#include <vulkan/vulkan_structs.hpp>
 
 #include <vulkan/vk_platform.h>
 
@@ -16,6 +19,11 @@ constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
 
 const std::vector validationLayers = {"VK_LAYER_KHRONOS_validation"};
+
+const std::vector<const char *> deviceExtensions = {
+    vk::KHRSwapchainExtensionName, vk::KHRSpirv14ExtensionName,
+    vk::KHRSynchronization2ExtensionName,
+    vk::KHRCreateRenderpass2ExtensionName};
 
 #ifdef NDEBUG
 constexpr bool enableValidationLayers = false;
@@ -36,6 +44,7 @@ private:
   vk::raii::Context context;
   vk::raii::Instance instance = nullptr;
   vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
+  vk::raii::PhysicalDevice physicalDevice;
   GLFWwindow *window = nullptr;
 
   void initWindow() {
@@ -50,6 +59,40 @@ private:
   void initVulkan() {
     createInstance();
     setupDebugMessenger();
+    pickPhysicalDevice();
+  }
+
+  void pickPhysicalDevice() {
+    std::vector<vk::raii::PhysicalDevice> devices =
+        instance.enumeratePhysicalDevices();
+    const auto devIter = std::ranges::find_if(devices, [&](auto const &device) {
+      auto queueFamilies = device.getQueueFamilyProperties();
+      bool isSuitable = device.getProperties().apiVersion >= VK_API_VERSION_1_3;
+      const auto qfpIter = std::ranges::find_if(
+          queueFamilies, [](vk::QueueFamilyProperties const &qfp) {
+            return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) !=
+                   static_cast<vk::QueueFlags>(0);
+          });
+      isSuitable = isSuitable && (qfpIter != queueFamilies.end());
+      auto extensions = device.enumerateDeviceExtensionProperties();
+      bool found = true;
+      for (auto const &extension : deviceExtensions) {
+        auto extensionIter =
+            std::ranges::find_if(extensions, [extension](auto const &ext) {
+              return strcmp(ext.extensionName, extension) == 0;
+            });
+        found = found && extensionIter != extensions.end();
+      }
+      isSuitable = isSuitable && found;
+      printf("\n");
+      if (isSuitable) {
+        physicalDevice = device;
+      }
+      return isSuitable;
+    });
+    if (devIter == devices.end()) {
+      throw std::runtime_error("failed to find a suitable GPU!");
+    }
   }
 
   void setupDebugMessenger() {
