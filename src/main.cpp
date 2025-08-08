@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
+#include <sys/types.h>
 
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
@@ -41,11 +42,16 @@ public:
   }
 
 private:
+  GLFWwindow *window = nullptr;
+
   vk::raii::Context context;
   vk::raii::Instance instance = nullptr;
   vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
-  vk::raii::PhysicalDevice physicalDevice;
-  GLFWwindow *window = nullptr;
+
+  vk::raii::PhysicalDevice physicalDevice = nullptr;
+  vk::raii::Device device = nullptr;
+
+  vk::raii::Queue graphicsQueue = nullptr;
 
   void initWindow() {
     glfwInit();
@@ -60,6 +66,52 @@ private:
     createInstance();
     setupDebugMessenger();
     pickPhysicalDevice();
+    createLogicalDevice();
+  }
+
+  void createLogicalDevice() {
+    std::vector<vk::QueueFamilyProperties> queueFamilyProperties =
+        physicalDevice.getQueueFamilyProperties();
+
+    const auto qfpIter = std::ranges::find_if(
+        queueFamilyProperties, [](vk::QueueFamilyProperties const &qfp) {
+          return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) !=
+                 static_cast<vk::QueueFlags>(0);
+        });
+
+    if (qfpIter == queueFamilyProperties.end()) {
+      throw std::runtime_error(
+          "No graphics queue found that supports graphics!");
+    }
+
+    uint32_t graphicsIndex = static_cast<uint32_t>(
+        std::distance(queueFamilyProperties.begin(), qfpIter));
+
+    // vk::PhysicalDeviceFeatures deviceFeatures;
+
+    float queuePriority = 0.0f;
+    vk::DeviceQueueCreateInfo deviceQueueCreateInfo{
+        .queueFamilyIndex = graphicsIndex,
+        .queueCount = 1,
+        .pQueuePriorities = &queuePriority};
+
+    vk::StructureChain<vk::PhysicalDeviceFeatures2,
+                       vk::PhysicalDeviceVulkan13Features,
+                       vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
+        featureChain = {
+            {}, {.dynamicRendering = true}, {.extendedDynamicState = true}};
+
+    vk::DeviceCreateInfo deviceCreateInfo{
+        .pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
+        .queueCreateInfoCount = 1,
+        .pQueueCreateInfos = &deviceQueueCreateInfo,
+        .enabledExtensionCount =
+            static_cast<u_int32_t>(deviceExtensions.size()),
+        .ppEnabledExtensionNames = deviceExtensions.data()};
+
+    device = vk::raii::Device(physicalDevice, deviceCreateInfo);
+
+    graphicsQueue = vk::raii::Queue(device, graphicsIndex, 0);
   }
 
   void pickPhysicalDevice() {
