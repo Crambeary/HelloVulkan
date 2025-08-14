@@ -1,8 +1,3 @@
-#include <complex>
-#include <cstdint>
-#include <iterator>
-#include <limits>
-#include <system_error>
 #define GLFW_INCLUDE_VULKAN
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #include <GLFW/glfw3.h>
@@ -16,8 +11,11 @@
 #include <vulkan/vk_platform.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <sys/types.h>
 
@@ -65,6 +63,7 @@ private:
   std::vector<vk::Image> swapChainImages;
   vk::Format swapChainImageFormat = vk::Format::eUndefined;
   vk::Extent2D swapChainExtent;
+  std::vector<vk::raii::ImageView> swapChainImageViews;
 
   void initWindow() {
     glfwInit();
@@ -82,6 +81,7 @@ private:
     pickPhysicalDevice();
     createLogicalDevice();
     createSwapChain();
+    createImageViews();
   }
 
   void createSwapChain() {
@@ -391,6 +391,15 @@ private:
       throw std::runtime_error("failed to create window surface!");
     }
     surface = vk::raii::SurfaceKHR(instance, _surface);
+  }
+
+  void createImageViews() {
+    swapChainImageViews.clear();
+
+    vk::ImageViewCreateInfo imageViewCreateInfo{
+        .viewType = vk::ImageViewType::e2D,
+        .format = swapChainImageFormat,
+        .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
   }
 };
 
