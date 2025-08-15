@@ -1,3 +1,4 @@
+#include <ios>
 #define GLFW_INCLUDE_VULKAN
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #include <GLFW/glfw3.h>
@@ -13,6 +14,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <iterator>
 #include <limits>
@@ -386,6 +388,21 @@ private:
     return vk::False;
   }
 
+  static std::vector<char> readFile(const std::string &filename) {
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+    if (!file.is_open()) {
+      throw std::runtime_error("failed to open file!");
+    }
+
+    std::vector<char> buffer(file.tellg());
+    file.seekg(0, std::ios::beg);
+    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+
+    file.close();
+    return buffer;
+  }
+
   void createSurface() {
     VkSurfaceKHR _surface;
     if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0) {
@@ -408,7 +425,9 @@ private:
     }
   }
 
-  void createGraphicsPipeline() {}
+  void createGraphicsPipeline() {
+    auto shaderCode = readFile("shaders/slang_shaders.spv");
+  }
 };
 
 int main() {
