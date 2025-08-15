@@ -67,6 +67,8 @@ private:
   vk::Extent2D swapChainExtent;
   std::vector<vk::raii::ImageView> swapChainImageViews;
 
+  vk::raii::Pipeline graphicsPipeline = nullptr;
+
   void initWindow() {
     glfwInit();
 
@@ -477,6 +479,8 @@ private:
         .pDynamicState = &dynamicState,
         .layout = pipelineLayout,
         .renderPass = nullptr};
+
+    graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
   }
 
   [[nodiscard]] vk::raii::ShaderModule
