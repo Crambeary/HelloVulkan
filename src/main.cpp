@@ -426,7 +426,31 @@ private:
   }
 
   void createGraphicsPipeline() {
-    auto shaderCode = readFile("shaders/slang_shaders.spv");
+    vk::raii::ShaderModule shaderModule =
+        createShaderModule(readFile("shaders/slang_shaders.spv"));
+
+    vk::PipelineShaderStageCreateInfo vertShaderStageInfo{
+        .stage = vk::ShaderStageFlagBits::eVertex,
+        .module = shaderModule,
+        .pName = "vertMain"};
+    vk::PipelineShaderStageCreateInfo fragShaderStageInfo{
+        .stage = vk::ShaderStageFlagBits::eFragment,
+        .module = shaderModule,
+        .pName = "fragMain"};
+
+    vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo,
+                                                        fragShaderStageInfo};
+  }
+
+  [[nodiscard]] vk::raii::ShaderModule
+  createShaderModule(const std::vector<char> &code) const {
+    vk::ShaderModuleCreateInfo createInfo{
+        .codeSize = code.size() * sizeof(char),
+        .pCode = reinterpret_cast<const uint32_t *>(code.data())};
+
+    vk::raii::ShaderModule shaderModule{device, createInfo};
+
+    return shaderModule;
   }
 };
 
