@@ -377,32 +377,6 @@ private:
     glfwTerminate();
   }
 
-  static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
-      vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
-      vk::DebugUtilsMessageTypeFlagsEXT type,
-      const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData, void *) {
-    std::cerr << "validation layer: severity: " << to_string(severity)
-              << "type " << to_string(type)
-              << " msg: " << pCallbackData->pMessage << std::endl;
-
-    return vk::False;
-  }
-
-  static std::vector<char> readFile(const std::string &filename) {
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-    if (!file.is_open()) {
-      throw std::runtime_error("failed to open file!");
-    }
-
-    std::vector<char> buffer(file.tellg());
-    file.seekg(0, std::ios::beg);
-    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-
-    file.close();
-    return buffer;
-  }
-
   void createSurface() {
     VkSurfaceKHR _surface;
     if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0) {
@@ -440,6 +414,69 @@ private:
 
     vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo,
                                                         fragShaderStageInfo};
+
+    vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
+
+    vk::PipelineInputAssemblyStateCreateInfo inputAssembly{
+        .topology = vk::PrimitiveTopology::eTriangleList};
+
+    vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1,
+                                                      .scissorCount = 1};
+
+    vk::PipelineRasterizationStateCreateInfo rasterizer{
+        .depthClampEnable = vk::False,
+        .rasterizerDiscardEnable = vk::False,
+        .polygonMode = vk::PolygonMode::eFill,
+        .cullMode = vk::CullModeFlagBits::eBack,
+        .frontFace = vk::FrontFace::eClockwise,
+        .depthBiasEnable = vk::False,
+        .depthBiasSlopeFactor = 1.0f,
+        .lineWidth = 1.0f};
+
+    vk::PipelineMultisampleStateCreateInfo multisampling{
+        .rasterizationSamples = vk::SampleCountFlagBits::e1,
+        .sampleShadingEnable = vk::False};
+
+    vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+        .blendEnable = vk::False,
+        .colorWriteMask =
+            vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+            vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+
+    vk::PipelineColorBlendStateCreateInfo colorBlending{
+        .logicOpEnable = vk::False,
+        .logicOp = vk::LogicOp::eCopy,
+        .attachmentCount = 1,
+        .pAttachments = &colorBlendAttachment};
+
+    std::vector dynamicStates = {vk::DynamicState::eViewport,
+                                 vk::DynamicState::eScissor};
+    vk::PipelineDynamicStateCreateInfo dynamicState{
+        .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
+        .pDynamicStates = dynamicStates.data()};
+
+    vk::raii::PipelineLayout pipelineLayout = nullptr;
+    vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
+        .setLayoutCount = 0, .pushConstantRangeCount = 0};
+    pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
+
+    vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &swapChainImageFormat};
+
+    vk::GraphicsPipelineCreateInfo pipelineInfo{
+        .pNext = &pipelineRenderingCreateInfo,
+        .stageCount = 2,
+        .pStages = shaderStages,
+        .pVertexInputState = &vertexInputInfo,
+        .pInputAssemblyState = &inputAssembly,
+        .pViewportState = &viewportState,
+        .pRasterizationState = &rasterizer,
+        .pMultisampleState = &multisampling,
+        .pColorBlendState = &colorBlending,
+        .pDynamicState = &dynamicState,
+        .layout = pipelineLayout,
+        .renderPass = nullptr};
   }
 
   [[nodiscard]] vk::raii::ShaderModule
@@ -451,6 +488,32 @@ private:
     vk::raii::ShaderModule shaderModule{device, createInfo};
 
     return shaderModule;
+  }
+
+  static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
+      vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
+      vk::DebugUtilsMessageTypeFlagsEXT type,
+      const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData, void *) {
+    std::cerr << "validation layer: severity: " << to_string(severity)
+              << "type " << to_string(type)
+              << " msg: " << pCallbackData->pMessage << std::endl;
+
+    return vk::False;
+  }
+
+  static std::vector<char> readFile(const std::string &filename) {
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+    if (!file.is_open()) {
+      throw std::runtime_error("failed to open file!");
+    }
+
+    std::vector<char> buffer(file.tellg());
+    file.seekg(0, std::ios::beg);
+    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+
+    file.close();
+    return buffer;
   }
 };
 
