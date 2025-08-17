@@ -188,7 +188,7 @@ private:
                  static_cast<vk::QueueFlags>(0);
         });
 
-    auto graphicsIndex = static_cast<uint32_t>(std::distance(
+    graphicsIndex = static_cast<uint32_t>(std::distance(
         queueFamilyProperties.begin(), graphicsQueueFamilyProperty));
 
     auto presentIndex =
