@@ -72,6 +72,10 @@ private:
   vk::raii::CommandPool commandPool = nullptr;
   vk::raii::CommandBuffer commandBuffer = nullptr;
 
+  vk::raii::Semaphore presentCompleteSemaphore = nullptr;
+  vk::raii::Semaphore renderFinishedSemaphore = nullptr;
+  vk::raii::Fence drawFence = nullptr;
+
   void initWindow() {
     glfwInit();
 
@@ -92,6 +96,7 @@ private:
     createGraphicsPipeline();
     createCommandPool();
     createCommandBuffer();
+    createSyncObjects();
   }
 
   void createSwapChain() {
@@ -99,7 +104,7 @@ private:
         physicalDevice.getSurfaceCapabilitiesKHR(surface);
     auto swapChainSurfaceFormat =
         chooseSwapSurfaceFormat(physicalDevice.getSurfaceFormatsKHR(surface));
-    auto swapChainExtent = chooseSwapExtent(surfaceCapabilities);
+    swapChainExtent = chooseSwapExtent(surfaceCapabilities);
     auto minImageCount = std::max(3u, surfaceCapabilities.minImageCount);
     minImageCount = (surfaceCapabilities.maxImageCount > 0 &&
                      minImageCount > surfaceCapabilities.maxImageCount)
@@ -167,7 +172,7 @@ private:
 
     return {std::clamp<uint32_t>(width, capabilities.minImageExtent.width,
                                  capabilities.maxImageExtent.width),
-            std::clamp<uint32_t>(height, capabilities.maxImageExtent.height,
+            std::clamp<uint32_t>(height, capabilities.minImageExtent.height,
                                  capabilities.maxImageExtent.height)};
   }
 
@@ -224,12 +229,9 @@ private:
     }
 
     auto features = physicalDevice.getFeatures2();
-    vk::PhysicalDeviceVulkan13Features vulkan13Features;
-    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
-        extendedDynamicStateFeatures;
+    vk::PhysicalDeviceVulkan13Features vulkan13Features{};
     vulkan13Features.dynamicRendering = vk::True;
-    extendedDynamicStateFeatures.extendedDynamicState = vk::True;
-    vulkan13Features.pNext = &extendedDynamicStateFeatures;
+    vulkan13Features.synchronization2 = vk::True;
     features.pNext = &vulkan13Features;
 
     float queuePriority = 0.0f;
@@ -376,7 +378,10 @@ private:
   void mainLoop() {
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents();
+      drawFrame();
     }
+
+    device.waitIdle();
   }
 
   void cleanup() {
@@ -581,12 +586,52 @@ private:
               .layerCount = 1
           }
       };
+
       vk::DependencyInfo dependencyInfo = {
           .dependencyFlags = {},
           .imageMemoryBarrierCount = 1,
           .pImageMemoryBarriers = &barrier
       };
       commandBuffer.pipelineBarrier2(dependencyInfo);
+  }
+
+  void drawFrame() {
+      // auto waitFence = vkWaitForFences(device, 1, drawFence, renderFinishedSemaphore, UINT64_MAX);
+      graphicsQueue.waitIdle();
+
+      auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphore, nullptr);
+      recordCommandBuffer(imageIndex);
+      device.resetFences( *drawFence );
+
+      vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+      const vk::SubmitInfo submitInfo{
+          .waitSemaphoreCount = 1,
+          .pWaitSemaphores = &*presentCompleteSemaphore,
+          .pWaitDstStageMask = &waitDestinationStageMask,
+          .commandBufferCount = 1,
+          .pCommandBuffers = &*commandBuffer,
+          .signalSemaphoreCount = 1,
+          .pSignalSemaphores = &*renderFinishedSemaphore
+      };
+      graphicsQueue.submit(submitInfo, *drawFence);
+
+      while (vk::Result::eTimeout == device.waitForFences(*drawFence, vk::True, UINT64_MAX)) ;
+
+      // const vk::PresentInfoKHR presentInfoKHR( **renderFinishedSemaphore, **swapChain, imageIndex);
+      const vk::PresentInfoKHR presentInfoKHR{
+          .waitSemaphoreCount = 1,
+          .pWaitSemaphores = &*renderFinishedSemaphore,
+          .swapchainCount = 1,
+          .pSwapchains = &*swapChain,
+          .pImageIndices = &imageIndex
+      };
+      result = presentQueue.presentKHR(presentInfoKHR);
+  }
+
+  void createSyncObjects() {
+      presentCompleteSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
+      renderFinishedSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
+      drawFence = vk::raii::Fence(device, {.flags = vk::FenceCreateFlagBits::eSignaled});
   }
 
   [[nodiscard]] vk::raii::ShaderModule
