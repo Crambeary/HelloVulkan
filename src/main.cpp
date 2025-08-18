@@ -705,8 +705,7 @@ class HelloTriangleApplication {
                 createImageViews();
             }
 
-            static void frameBufferResizeCallback(GLFWwindow* window, int width, int height) {
-                std::cout << width << " " << height << std::endl;
+            static void frameBufferResizeCallback(GLFWwindow* window, int /*width*/, int /*height*/) {
                 auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
                 app->framebufferResized = true;
             }
