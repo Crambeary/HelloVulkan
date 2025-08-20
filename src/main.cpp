@@ -1,6 +1,5 @@
 #define GLFW_INCLUDE_VULKAN
 #define VULKAN_HPP_NO_CONSTRUCTORS
-// #define VULKAN_HPP_NO_EXCEPTIONS
 #include <GLFW/glfw3.h>
 #include <vector>
 #include <vulkan/vulkan.hpp>
@@ -610,13 +609,7 @@ class HelloTriangleApplication {
 
                 while ( vk::Result::eTimeout == device.waitForFences(*inFlightFences[currentFrame], vk::True, UINT64_MAX));
 
-
-                // auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[currentFrame]);
-                // auto fenceStatus = inFlightFences[currentFrame].getStatus();
-                // std::cout << currentFrame << " " << fenceStatus << std::endl;
-
                 auto [result, imageIndex] = SwapchainNextImageWrapper(swapChain, UINT64_MAX, *presentCompleteSemaphores[semaphoreIndex], VK_NULL_HANDLE);
-
 
                 if (result == vk::Result::eErrorOutOfDateKHR) {
                     recreateSwapChain();
@@ -635,15 +628,9 @@ class HelloTriangleApplication {
                     throw std::runtime_error("failed to get fence");
                 }
 
-                // auto waitFence = vkWaitForFences(device, 1, drawFence, renderFinishedSemaphore, UINT64_MAX);
-                // graphicsQueue.waitIdle();
-
-                // auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphore, nullptr);
-                // recordCommandBuffer(imageIndex);
                 commandBuffers[currentFrame].reset();
                 recordCommandBuffer(imageIndex);
 
-                // device.resetFences( *drawFence );
                 device.resetFences( *inFlightFences[currentFrame]);
 
                 imagesInFlight[imageIndex] = *inFlightFences[currentFrame];
@@ -660,9 +647,6 @@ class HelloTriangleApplication {
                 };
                 graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
 
-                // while (vk::Result::eTimeout == device.waitForFences(*drawFence, vk::True, UINT64_MAX)) ;
-
-                // const vk::PresentInfoKHR presentInfoKHR( **renderFinishedSemaphore, **swapChain, imageIndex);
                 const vk::PresentInfoKHR presentInfoKHR{
                     .waitSemaphoreCount = 1,
                     .pWaitSemaphores = &*renderFinishedSemaphores[semaphoreIndex],
@@ -670,7 +654,6 @@ class HelloTriangleApplication {
                     .pSwapchains = &*swapChain,
                     .pImageIndices = &imageIndex
                 };
-                // vk::Result presentResult = presentQueue.presentKHR(presentInfoKHR);
                 vk::Result presentResult = QueuePresentWrapper(graphicsQueue, presentInfoKHR);
                 if (presentResult == vk::Result::eErrorOutOfDateKHR || presentResult == vk::Result::eSuboptimalKHR || framebufferResized) {
                     framebufferResized = false;
