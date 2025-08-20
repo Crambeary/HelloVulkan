@@ -27,7 +27,6 @@ constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
 const std::vector validationLayers = {"VK_LAYER_KHRONOS_validation"};
 
-vk::raii::Queue presentQueue = nullptr;
 
 const std::vector<const char *> deviceExtensions = {
     vk::KHRSwapchainExtensionName, vk::KHRSpirv14ExtensionName,
@@ -61,6 +60,7 @@ class HelloTriangleApplication {
     vk::raii::Device device = nullptr;
     uint32_t graphicsIndex = ~0;
     vk::raii::Queue graphicsQueue = nullptr;
+    vk::raii::Queue presentQueue = nullptr;
 
     vk::raii::SwapchainKHR swapChain = nullptr;
     std::vector<vk::Image> swapChainImages;
@@ -76,16 +76,21 @@ class HelloTriangleApplication {
     std::vector<vk::raii::Semaphore> presentCompleteSemaphores;
     std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
     std::vector<vk::raii::Fence> inFlightFences;
+    std::vector<vk::Fence> imagesInFlight;
     uint32_t currentFrame = 0;
+    uint32_t semaphoreIndex = 0;
+    bool framebufferResized = false;
 
     void initWindow() {
         glfwInit();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+        glfwSetWindowUserPointer(window, this);
+        glfwSetFramebufferSizeCallback(window, frameBufferResizeCallback);
     }
+
 
     void initVulkan() {
         createInstance();
@@ -140,6 +145,7 @@ class HelloTriangleApplication {
         swapChainImages = swapChain.getImages();
 
         swapChainImageFormat = swapChainSurfaceFormat.format;
+        imagesInFlight.assign(swapChainImages.size(), vk::Fence{});
     }
 
     vk::SurfaceFormatKHR chooseSwapSurfaceFormat(
@@ -600,46 +606,79 @@ class HelloTriangleApplication {
             }
 
             void drawFrame() {
+
                 while ( vk::Result::eTimeout == device.waitForFences(*inFlightFences[currentFrame], vk::True, UINT64_MAX));
 
-                auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, presentCompleteSemaphores[currentFrame]);
+                auto [result, imageIndex] = SwapchainNextImageWrapper(swapChain, UINT64_MAX, *presentCompleteSemaphores[semaphoreIndex], VK_NULL_HANDLE);
 
-                device.resetFences( *inFlightFences[currentFrame]);
+                if (result == vk::Result::eErrorOutOfDateKHR) {
+                    recreateSwapChain();
+                    return;
+                }
+                if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
+                    throw std::runtime_error("failed to acquire swap chain image!");
+                }
 
-                // auto waitFence = vkWaitForFences(device, 1, drawFence, renderFinishedSemaphore, UINT64_MAX);
-                graphicsQueue.waitIdle();
+                vk::Result waitResult = vk::Result::eSuccess;
+                if (imagesInFlight[imageIndex]) {
+                    waitResult = device.waitForFences(imagesInFlight[imageIndex], vk::True, UINT64_MAX);
+                }
 
-                // auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphore, nullptr);
-                // recordCommandBuffer(imageIndex);
+                if (waitResult != vk::Result::eSuccess) {
+                    throw std::runtime_error("failed to get fence");
+                }
+
                 commandBuffers[currentFrame].reset();
                 recordCommandBuffer(imageIndex);
 
-                // device.resetFences( *drawFence );
+                device.resetFences( *inFlightFences[currentFrame]);
+
+                imagesInFlight[imageIndex] = *inFlightFences[currentFrame];
 
                 vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
                 const vk::SubmitInfo submitInfo{
                     .waitSemaphoreCount = 1,
-                    .pWaitSemaphores = &*presentCompleteSemaphores[currentFrame],
+                    .pWaitSemaphores = &*presentCompleteSemaphores[semaphoreIndex],
                     .pWaitDstStageMask = &waitDestinationStageMask,
                     .commandBufferCount = 1,
                     .pCommandBuffers = &*commandBuffers[currentFrame],
                     .signalSemaphoreCount = 1,
-                    .pSignalSemaphores = &*renderFinishedSemaphores[currentFrame]
+                    .pSignalSemaphores = &*renderFinishedSemaphores[semaphoreIndex]
                 };
-                graphicsQueue.submit(submitInfo, inFlightFences[currentFrame]);
+                graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
 
-                // while (vk::Result::eTimeout == device.waitForFences(*drawFence, vk::True, UINT64_MAX)) ;
-
-                // const vk::PresentInfoKHR presentInfoKHR( **renderFinishedSemaphore, **swapChain, imageIndex);
                 const vk::PresentInfoKHR presentInfoKHR{
                     .waitSemaphoreCount = 1,
-                    .pWaitSemaphores = &*renderFinishedSemaphores[currentFrame],
+                    .pWaitSemaphores = &*renderFinishedSemaphores[semaphoreIndex],
                     .swapchainCount = 1,
                     .pSwapchains = &*swapChain,
                     .pImageIndices = &imageIndex
                 };
-                result = presentQueue.presentKHR(presentInfoKHR);
+                vk::Result presentResult = QueuePresentWrapper(graphicsQueue, presentInfoKHR);
+                if (presentResult == vk::Result::eErrorOutOfDateKHR || presentResult == vk::Result::eSuboptimalKHR || framebufferResized) {
+                    framebufferResized = false;
+                    recreateSwapChain();
+                } else if (result != vk::Result::eSuccess) {
+                    throw std::runtime_error("failed to present swap chain image!");
+                }
+                semaphoreIndex = (semaphoreIndex + 1) % swapChainImages.size();
                 currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+            }
+
+            vk::Result QueuePresentWrapper(const vk::raii::Queue &queue,
+                                           const vk::PresentInfoKHR &present_info) {
+              return static_cast<vk::Result>(queue.getDispatcher()->vkQueuePresentKHR(
+                  static_cast<VkQueue>(*queue), reinterpret_cast<const VkPresentInfoKHR *>(&present_info)));
+            }
+
+            std::pair<vk::Result, uint32_t> SwapchainNextImageWrapper(const vk::raii::SwapchainKHR &swapchain,
+                                                                      uint64_t timeout, vk::Semaphore semaphore,
+                                                                      vk::Fence fence) {
+              uint32_t image_index;
+              vk::Result result = static_cast<vk::Result>(swapchain.getDispatcher()->vkAcquireNextImageKHR(
+                  static_cast<VkDevice>(swapchain.getDevice()), static_cast<VkSwapchainKHR>(*swapchain),
+                  timeout, static_cast<VkSemaphore>(semaphore), static_cast<VkFence>(fence), &image_index));
+              return std::make_pair(result, image_index);
             }
 
             void createSyncObjects() {
@@ -647,9 +686,12 @@ class HelloTriangleApplication {
                 renderFinishedSemaphores.clear();
                 inFlightFences.clear();
 
-                for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                for (size_t i = 0; i < swapChainImages.size(); i++) {
                     presentCompleteSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
                     renderFinishedSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
+                }
+
+                for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
                     inFlightFences.emplace_back(device, vk::FenceCreateInfo{ .flags = vk::FenceCreateFlagBits::eSignaled});
                 }
             }
@@ -660,12 +702,25 @@ class HelloTriangleApplication {
             }
 
             void recreateSwapChain() {
+                int width = 0, height = 0;
+                glfwGetFramebufferSize(window, &width, &height);
+                while (width == 0 || height == 0) {
+                    glfwGetFramebufferSize(window, &width, &height);
+                    glfwWaitEvents();
+                }
+
+
                 device.waitIdle();
 
                 cleanupSwapChain();
 
                 createSwapChain();
                 createImageViews();
+            }
+
+            static void frameBufferResizeCallback(GLFWwindow* window, int /*width*/, int /*height*/) {
+                auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+                app->framebufferResized = true;
             }
 
             [[nodiscard]] vk::raii::ShaderModule
