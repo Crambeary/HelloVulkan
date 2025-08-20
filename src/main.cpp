@@ -77,7 +77,9 @@ class HelloTriangleApplication {
     std::vector<vk::raii::Semaphore> presentCompleteSemaphores;
     std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
     std::vector<vk::raii::Fence> inFlightFences;
+    std::vector<vk::Fence> imagesInFlight;
     uint32_t currentFrame = 0;
+    uint32_t semaphoreIndex = 0;
     bool framebufferResized = false;
 
     void initWindow() {
@@ -144,6 +146,7 @@ class HelloTriangleApplication {
         swapChainImages = swapChain.getImages();
 
         swapChainImageFormat = swapChainSurfaceFormat.format;
+        imagesInFlight.assign(swapChainImages.size(), vk::Fence{});
     }
 
     vk::SurfaceFormatKHR chooseSwapSurfaceFormat(
@@ -604,13 +607,18 @@ class HelloTriangleApplication {
             }
 
             void drawFrame() {
+
                 while ( vk::Result::eTimeout == device.waitForFences(*inFlightFences[currentFrame], vk::True, UINT64_MAX));
 
+
                 // auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[currentFrame]);
-                auto [result, imageIndex] = SwapchainNextImageWrapper(swapChain, UINT64_MAX, *presentCompleteSemaphores[currentFrame], *inFlightFences[currentFrame]);
+                // auto fenceStatus = inFlightFences[currentFrame].getStatus();
+                // std::cout << currentFrame << " " << fenceStatus << std::endl;
+
+                auto [result, imageIndex] = SwapchainNextImageWrapper(swapChain, UINT64_MAX, *presentCompleteSemaphores[semaphoreIndex], VK_NULL_HANDLE);
+
 
                 if (result == vk::Result::eErrorOutOfDateKHR) {
-                    std::cout << "going to recreateSwapChain()" << std::endl;
                     recreateSwapChain();
                     return;
                 }
@@ -618,7 +626,14 @@ class HelloTriangleApplication {
                     throw std::runtime_error("failed to acquire swap chain image!");
                 }
 
-                device.resetFences( *inFlightFences[currentFrame]);
+                vk::Result waitResult = vk::Result::eSuccess;
+                if (imagesInFlight[imageIndex]) {
+                    waitResult = device.waitForFences(imagesInFlight[imageIndex], vk::True, UINT64_MAX);
+                }
+
+                if (waitResult != vk::Result::eSuccess) {
+                    throw std::runtime_error("failed to get fence");
+                }
 
                 // auto waitFence = vkWaitForFences(device, 1, drawFence, renderFinishedSemaphore, UINT64_MAX);
                 // graphicsQueue.waitIdle();
@@ -629,16 +644,19 @@ class HelloTriangleApplication {
                 recordCommandBuffer(imageIndex);
 
                 // device.resetFences( *drawFence );
+                device.resetFences( *inFlightFences[currentFrame]);
+
+                imagesInFlight[imageIndex] = *inFlightFences[currentFrame];
 
                 vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
                 const vk::SubmitInfo submitInfo{
                     .waitSemaphoreCount = 1,
-                    .pWaitSemaphores = &*presentCompleteSemaphores[currentFrame],
+                    .pWaitSemaphores = &*presentCompleteSemaphores[semaphoreIndex],
                     .pWaitDstStageMask = &waitDestinationStageMask,
                     .commandBufferCount = 1,
                     .pCommandBuffers = &*commandBuffers[currentFrame],
                     .signalSemaphoreCount = 1,
-                    .pSignalSemaphores = &*renderFinishedSemaphores[currentFrame]
+                    .pSignalSemaphores = &*renderFinishedSemaphores[semaphoreIndex]
                 };
                 graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
 
@@ -647,7 +665,7 @@ class HelloTriangleApplication {
                 // const vk::PresentInfoKHR presentInfoKHR( **renderFinishedSemaphore, **swapChain, imageIndex);
                 const vk::PresentInfoKHR presentInfoKHR{
                     .waitSemaphoreCount = 1,
-                    .pWaitSemaphores = &*renderFinishedSemaphores[currentFrame],
+                    .pWaitSemaphores = &*renderFinishedSemaphores[semaphoreIndex],
                     .swapchainCount = 1,
                     .pSwapchains = &*swapChain,
                     .pImageIndices = &imageIndex
@@ -660,6 +678,7 @@ class HelloTriangleApplication {
                 } else if (result != vk::Result::eSuccess) {
                     throw std::runtime_error("failed to present swap chain image!");
                 }
+                semaphoreIndex = (semaphoreIndex + 1) % swapChainImages.size();
                 currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
             }
 
@@ -684,9 +703,12 @@ class HelloTriangleApplication {
                 renderFinishedSemaphores.clear();
                 inFlightFences.clear();
 
-                for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                for (size_t i = 0; i < swapChainImages.size(); i++) {
                     presentCompleteSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
                     renderFinishedSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
+                }
+
+                for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
                     inFlightFences.emplace_back(device, vk::FenceCreateInfo{ .flags = vk::FenceCreateFlagBits::eSignaled});
                 }
             }
