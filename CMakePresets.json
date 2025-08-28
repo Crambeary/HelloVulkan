@@ -1,21 +1,33 @@
 {
   "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 31,
+    "patch": 0
+  },
   "configurePresets": [
     {
-      "name": "debug",
-      "generator": "Ninja",
-      "binaryDir": "build",
+      "name": "windows-msvc",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/windows-msvc",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_PREFIX_PATH": "$env{VULKAN_SDK}/lib/cmake",
-        "CMAKE_CXX_SCAN_FOR_MODULES": "OFF"
+        "VCPKG_TARGET_TRIPLET": "x64-windows"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "debug",
-      "configurePreset": "debug"
+      "name": "windows-msvc-debug",
+      "configurePreset": "windows-msvc",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-msvc-release",
+      "configurePreset": "windows-msvc",
+      "configuration": "Release"
     }
   ]
 }
+
