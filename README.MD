@@ -1,7 +1,7 @@
 # Welcome
 
 
-## Getting clangd happy on linux 
+## Getting clangd happy on linux
 The Cmake command needs to explicitly mention outputting the `compile_commands.json` file. Like so:
 
 ```sh
@@ -15,10 +15,20 @@ Once the `compile_commands.json` file is made, there are additional commands in 
 1. -fmodules-ts
 2. I don't remember, I moved on too quick. clangd will show the error at the top, remove the commands it doesn't know
 
-## Building 
+## Building
 Run the above cmake command from the project root, then follow up with:
 
 ```sh
 cd build
 ninja
 ```
+
+
+## Windows
+
+```sh
+cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="C:\Users\marct\ghq\github.com\microsoft\vcpkg\scripts\buildsystems\vcpkg.cmake"
+```
+
+1. Open `./build/HelloVulkan.sln` in Visual Studio 2022
+2. Right-Click on HelloVulkan in the Solution Explorer and click `Build`
