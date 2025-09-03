@@ -41,7 +41,9 @@ endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan glfw)
 
-
+add_library(stb INTERFACE)
+target_include_directories(stb INTERFACE ${CMAKE_SOURCE_DIR}/external)
+target_link_libraries(HelloVulkan PRIVATE stb)
 
 
 function(add_slang_shader_target TARGET)

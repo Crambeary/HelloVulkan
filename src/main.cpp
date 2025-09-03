@@ -26,6 +26,8 @@
 #include <limits>
 #include <stdexcept>
 #include <sys/types.h>
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb/stb_image.h"
 
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
@@ -133,6 +135,9 @@ class HelloTriangleApplication {
     vk::raii::DescriptorPool descriptorPool = nullptr;
     std::vector<vk::raii::DescriptorSet> descriptorSets;
 
+    vk::raii::Image textureImage = nullptr;
+    vk::raii::DeviceMemory textureImageMemory = nullptr;
+
     void initWindow() {
         glfwInit();
 
@@ -155,6 +160,7 @@ class HelloTriangleApplication {
         createDescriptorSetLayout();
         createGraphicsPipeline();
         createCommandPool();
+        createTextureImage();
         createVertexBuffer();
         createIndexBuffer();
         createUniformBuffers();
@@ -590,6 +596,114 @@ class HelloTriangleApplication {
                 commandPool = vk::raii::CommandPool(device, poolInfo);
             }
 
+            void createTextureImage() { 
+                int texWidth, texHeight, texChannels;
+				stbi_uc *pixels = stbi_load("textures/texture.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+                vk::DeviceSize imageSize = texWidth * texHeight * 4;
+
+                if (!pixels) {
+                  throw std::runtime_error("failed to load texture image!");
+                }
+
+                vk::raii::Buffer stagingBuffer({});
+                vk::raii::DeviceMemory stagingBufferMemory({});
+
+                createBuffer(imageSize, vk::BufferUsageFlagBits::eTransferSrc,
+                             vk::MemoryPropertyFlagBits::eHostVisible |
+                               vk::MemoryPropertyFlagBits::eHostCoherent,
+                             stagingBuffer, stagingBufferMemory);
+
+                void *data = stagingBufferMemory.mapMemory(0, imageSize);
+                memcpy(data, pixels, imageSize);
+                stagingBufferMemory.unmapMemory();
+
+                // clean up original image array after copy
+                stbi_image_free(pixels);
+
+                vk::raii::Image textureImageTemp({});
+                vk::raii::DeviceMemory textureImageMemmoryTemp({});
+                createImage(texWidth, texHeight, vk::Format::eR8G8B8A8Srgb,
+                            vk::ImageTiling::eOptimal,
+                            vk::ImageUsageFlagBits::eTransferDst |
+                              vk::ImageUsageFlagBits::eSampled,
+                            vk::MemoryPropertyFlagBits::eDeviceLocal,
+                            textureImageTemp, textureImageMemmoryTemp);
+            }
+
+            void transitionImageLayout(const vk::raii::Image& image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
+              auto commandBuffer = beginSingleTimeCommands();
+
+              vk::ImageMemoryBarrier barrier{
+                    .oldLayout = oldLayout,
+                    .newLayout = newLayout,
+                    .image = image,
+					.subresourceRange = {
+                      .aspectMask = vk::ImageAspectFlagBits::eColor,
+                      .baseMipLevel = 0,
+                      .levelCount = 1,
+                      .baseArrayLayer = 0,
+                      .layerCount = 1
+                    }
+              };
+
+              commandBuffer.pipelineBarrier(sourceStage, destinationStage, {},
+                                            {}, nullptr, barrier);
+
+              endSingleTimeCommands(commandBuffer);
+            }
+
+            void createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Image& image, vk::raii::DeviceMemory& imageMemory) {
+
+              vk::ImageCreateInfo imageInfo{
+                .imageType = vk::ImageType::e2D,
+                .format = format,
+                .extent = {width, height, 1},
+                .mipLevels = 1,
+                .arrayLayers = 1,
+                .samples = vk::SampleCountFlagBits::e1,
+                .tiling = tiling,
+                .usage = usage,
+                .sharingMode = vk::SharingMode::eExclusive
+              };
+
+              image = vk::raii::Image( device, imageInfo );
+
+              vk::MemoryRequirements memRequirements =
+                image.getMemoryRequirements();
+              vk::MemoryAllocateInfo allocInfo{
+                .allocationSize = memRequirements.size,
+                .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties)};
+              imageMemory = vk::raii::DeviceMemory(device, allocInfo);
+              image.bindMemory(imageMemory, 0);
+            }
+
+            vk::raii::CommandBuffer beginSingleTimeCommands() {
+              vk::CommandBufferAllocateInfo allocInfo{
+                .commandPool = commandPool,
+                .level = vk::CommandBufferLevel::ePrimary,
+                .commandBufferCount = 1
+              };
+              vk::raii::CommandBuffer commandBuffer =
+                std::move(device.allocateCommandBuffers(allocInfo).front());
+
+              vk::CommandBufferBeginInfo beginInfo{
+                .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
+              commandBuffer.begin(beginInfo);
+
+              return commandBuffer;
+            }
+
+            void endSingleTimeCommands(vk::raii::CommandBuffer &commandBuffer) {
+              commandBuffer.end();
+
+              vk::SubmitInfo submitInfo{
+                  .commandBufferCount = 1,
+                  .pCommandBuffers = &*commandBuffer
+              };
+              graphicsQueue.submit(submitInfo, nullptr);
+              graphicsQueue.waitIdle();
+            }
+
             void createVertexBuffer() {
                 vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
@@ -708,19 +822,10 @@ class HelloTriangleApplication {
             }
 
             void copyBuffer(vk::raii::Buffer & srcBuffer, vk::raii::Buffer & dstBuffer, vk::DeviceSize size) {
-                vk::CommandBufferAllocateInfo allocInfo{
-                    .commandPool = commandPool,
-                    .level = vk::CommandBufferLevel::ePrimary,
-                    .commandBufferCount = 1
-                };
-                vk::raii::CommandBuffer commandCopyBuffer = std::move(device.allocateCommandBuffers(allocInfo).front());
-
-                commandCopyBuffer.begin(vk::CommandBufferBeginInfo{ .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+              vk::raii::CommandBuffer commandCopyBuffer =
+                beginSingleTimeCommands();
                 commandCopyBuffer.copyBuffer(srcBuffer, dstBuffer, vk::BufferCopy(0, 0, size));
-                commandCopyBuffer.end();
-
-                graphicsQueue.submit(vk::SubmitInfo{ .commandBufferCount = 1, .pCommandBuffers = &*commandCopyBuffer}, nullptr);
-                graphicsQueue.waitIdle();
+                endSingleTimeCommands(commandCopyBuffer);
             }
 
             void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Buffer& buffer, vk::raii::DeviceMemory& bufferMemory) {
