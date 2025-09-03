@@ -1,6 +1,9 @@
 #define GLFW_INCLUDE_VULKAN
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #include <GLFW/glfw3.h>
+#ifdef _WIN32
+#include <GLFW/glfw3native.h>
+#endif
 #include <vector>
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_core.h>
@@ -854,7 +857,7 @@ class HelloTriangleApplication {
                 createImageViews();
             }
 
-            static void frameBufferResizeCallback(GLFWwindow* window, int /*width*/, int /*height*/) {
+            static void frameBufferResizeCallback(GLFWwindow* window, int /*width*/, int /*height*/) noexcept {
                 auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
                 app->framebufferResized = true;
             }

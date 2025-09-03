@@ -1,5 +1,16 @@
 {
-  "version": 3,
+  "buildPresets": [
+    {
+      "name": "windows-msvc-debug",
+      "configurePreset": "windows-msvc",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-msvc-release",
+      "configurePreset": "windows-msvc",
+      "configuration": "Release"
+    }
+  ],
   "cmakeMinimumRequired": {
     "major": 3,
     "minor": 31,
@@ -17,17 +28,6 @@
       }
     }
   ],
-  "buildPresets": [
-    {
-      "name": "windows-msvc-debug",
-      "configurePreset": "windows-msvc",
-      "configuration": "Debug"
-    },
-    {
-      "name": "windows-msvc-release",
-      "configurePreset": "windows-msvc",
-      "configuration": "Release"
-    }
-  ]
+  "version": 3
 }
 
