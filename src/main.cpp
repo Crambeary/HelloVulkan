@@ -628,6 +628,15 @@ class HelloTriangleApplication {
                               vk::ImageUsageFlagBits::eSampled,
                             vk::MemoryPropertyFlagBits::eDeviceLocal,
                             textureImageTemp, textureImageMemmoryTemp);
+
+                transitionImageLayout(textureImage, vk::ImageLayout::eUndefined,
+                                      vk::ImageLayout::eTransferDstOptimal);
+                copyBufferToImage(stagingBuffer, textureImage,
+                                  static_cast<uint32_t>(texWidth),
+                                  static_cast<uint32_t>(texHeight));
+                transitionImageLayout(textureImage,
+                                      vk::ImageLayout::eTransferDstOptimal,
+                                      vk::ImageLayout::eShaderReadOnlyOptimal);
             }
 
             void transitionImageLayout(const vk::raii::Image& image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
@@ -646,8 +655,44 @@ class HelloTriangleApplication {
                     }
               };
 
+              vk::PipelineStageFlags sourceStage;
+              vk::PipelineStageFlags destinationStage;
+
+              if (oldLayout == vk::ImageLayout::eUndefined &&
+                  newLayout == vk::ImageLayout::eTransferDstOptimal) {
+                barrier.srcAccessMask = {};
+                barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+
+                sourceStage = vk::PipelineStageFlagBits::eTopOfPipe;
+                destinationStage = vk::PipelineStageFlagBits::eTransfer;
+              } else if (oldLayout == vk::ImageLayout::eTransferDstOptimal &&
+                         newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
+                barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+                barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+                sourceStage = vk::PipelineStageFlagBits::eTransfer;
+                destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
+              } else {
+                throw std::invalid_argument("unsupported layout transition!");
+              }
+
+
               commandBuffer.pipelineBarrier(sourceStage, destinationStage, {},
                                             {}, nullptr, barrier);
+
+              endSingleTimeCommands(commandBuffer);
+            }
+
+            void copyBufferToImage(const vk::raii::Buffer& buffer,
+                vk::raii::Image& image, uint32_t width,
+                uint32_t height) {
+              vk::raii::CommandBuffer commandBuffer = beginSingleTimeCommands();
+
+              vk::BufferImageCopy region(
+                0, 0, 0, {vk::ImageAspectFlagBits::eColor, 0, 0, 1}, {0, 0, 0},
+                {width, height, 1});
+              commandBuffer.copyBufferToImage(
+                buffer, image, vk::ImageLayout::eTransferDstOptimal, {region});
 
               endSingleTimeCommands(commandBuffer);
             }
