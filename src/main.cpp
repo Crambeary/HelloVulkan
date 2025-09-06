@@ -138,6 +138,9 @@ class HelloTriangleApplication {
     vk::raii::Image textureImage = nullptr;
     vk::raii::DeviceMemory textureImageMemory = nullptr;
 
+    vk::raii::ImageView textureImageView = nullptr;
+    vk::raii::Sampler textureSampler = nullptr;
+
     void initWindow() {
         glfwInit();
 
@@ -161,6 +164,8 @@ class HelloTriangleApplication {
         createGraphicsPipeline();
         createCommandPool();
         createTextureImage();
+        createTextureImageView();
+        createTextureSampler();
         createVertexBuffer();
         createIndexBuffer();
         createUniformBuffers();
@@ -346,7 +351,23 @@ class HelloTriangleApplication {
                         });
                         found = found && extensionIter != extensions.end();
                     }
-                    isSuitable = isSuitable && found;
+                    auto features = device.template getFeatures2<
+                      vk::PhysicalDeviceFeatures2,
+                      vk::PhysicalDeviceVulkan13Features,
+                      vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+
+                    bool supportsRequiredFeatures =
+                      features.template get<vk::PhysicalDeviceFeatures2>()
+                        .features.samplerAnisotropy &&
+                      features
+                        .template get<vk::PhysicalDeviceVulkan13Features>()
+                        .dynamicRendering &&
+                      features
+                        .template get<
+                          vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>()
+                        .extendedDynamicState;
+
+                    isSuitable = isSuitable && found && supportsRequiredFeatures;
                     printf("\n");
                     if (isSuitable) {
                         physicalDevice = device;
@@ -471,17 +492,15 @@ class HelloTriangleApplication {
             }
 
             void createImageViews() {
-                swapChainImageViews.clear();
-
-                vk::ImageViewCreateInfo imageViewCreateInfo{
-                    .viewType = vk::ImageViewType::e2D,
-                    .format = swapChainImageFormat,
-                    .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
-
-                for (auto image : swapChainImages) {
-                    imageViewCreateInfo.image = image;
-                    swapChainImageViews.emplace_back(device, imageViewCreateInfo);
-                }
+              vk::ImageViewCreateInfo imageViewCreateInfo{
+                .viewType = vk::ImageViewType::e2D,
+                .format = swapChainImageFormat,
+                .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0,
+                                     1}};
+              for (auto image : swapChainImages) {
+                imageViewCreateInfo.image = image;
+                swapChainImageViews.emplace_back(device, imageViewCreateInfo);
+              }
             }
 
             void createDescriptorSetLayout() {
@@ -629,6 +648,9 @@ class HelloTriangleApplication {
                             vk::MemoryPropertyFlagBits::eDeviceLocal,
                             textureImageTemp, textureImageMemmoryTemp);
 
+                textureImage = std::move(textureImageTemp);
+                textureImageMemory = std::move(textureImageMemmoryTemp);
+
                 transitionImageLayout(textureImage, vk::ImageLayout::eUndefined,
                                       vk::ImageLayout::eTransferDstOptimal);
                 copyBufferToImage(stagingBuffer, textureImage,
@@ -646,13 +668,7 @@ class HelloTriangleApplication {
                     .oldLayout = oldLayout,
                     .newLayout = newLayout,
                     .image = image,
-					.subresourceRange = {
-                      .aspectMask = vk::ImageAspectFlagBits::eColor,
-                      .baseMipLevel = 0,
-                      .levelCount = 1,
-                      .baseArrayLayer = 0,
-                      .layerCount = 1
-                    }
+					.subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
               };
 
               vk::PipelineStageFlags sourceStage;
@@ -747,6 +763,53 @@ class HelloTriangleApplication {
               };
               graphicsQueue.submit(submitInfo, nullptr);
               graphicsQueue.waitIdle();
+            }
+
+            void createTextureImageView() {
+              textureImageView =
+                createImageView(textureImage, vk::Format::eR8G8B8A8Srgb);
+            }
+
+            vk::raii::ImageView createImageView(vk::raii::Image& image, vk::Format format) {
+              vk::ImageViewCreateInfo viewInfo{
+                .image = image,
+                .viewType = vk::ImageViewType::e2D,
+                .format = format,
+			    .subresourceRange = {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+				}
+              };
+
+              return vk::raii::ImageView(device, viewInfo);
+            }
+
+            void createTextureSampler() { 
+                vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
+                vk::SamplerCreateInfo samplerInfo{
+					.magFilter = vk::Filter::eLinear,
+					.minFilter = vk::Filter::eLinear,
+                    .mipmapMode = vk::SamplerMipmapMode::eLinear,
+                    .addressModeU = vk::SamplerAddressMode::eRepeat,
+                    .addressModeV = vk::SamplerAddressMode::eRepeat,
+                    .addressModeW = vk::SamplerAddressMode::eRepeat,
+                    .mipLodBias = 0,
+                    .anisotropyEnable = 1,
+                    .maxAnisotropy = properties.limits.maxSamplerAnisotropy,
+                    .compareEnable = vk::False,
+                    .compareOp = vk::CompareOp::eAlways
+                };
+
+                samplerInfo.borderColor = vk::BorderColor::eIntOpaqueBlack;
+                samplerInfo.unnormalizedCoordinates = vk::False;
+                samplerInfo.minLod = 0.0f;
+                samplerInfo.maxLod = 0.0f;
+
+                textureSampler = vk::raii::Sampler(device, samplerInfo);
+
             }
 
             void createVertexBuffer() {
