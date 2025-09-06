@@ -41,7 +41,9 @@ endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan glfw)
 
-
+add_library(stb INTERFACE)
+target_include_directories(stb INTERFACE ${CMAKE_SOURCE_DIR}/external)
+target_link_libraries(HelloVulkan PRIVATE stb)
 
 
 function(add_slang_shader_target TARGET)
@@ -88,6 +90,9 @@ endfunction()
 add_slang_shader_target( slang_shaders "${CMAKE_CURRENT_LIST_DIR}/shaders/shader.slang")
 add_dependencies(${PROJECT_NAME} slang_shaders)
 set(GENERATED_SHADER_SPD "${CMAKE_BINARY_DIR}/shaders/slang.spv" CACHE FILEPATH "Generated SPIR-V shader")
+
+# Copy texture files to the build directory
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/textures DESTINATION ${CMAKE_BINARY_DIR})
 
 ADD_CUSTOM_TARGET(distclean
     COMMAND ${CMAKE_COMMAND} -E rm -rf "${CMAKE_BINARY_DIR}"
