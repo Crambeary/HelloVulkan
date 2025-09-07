@@ -39,7 +39,9 @@ const std::vector validationLayers = {"VK_LAYER_KHRONOS_validation"};
 const std::vector<const char *> deviceExtensions = {
     vk::KHRSwapchainExtensionName, vk::KHRSpirv14ExtensionName,
     vk::KHRSynchronization2ExtensionName,
-    vk::KHRCreateRenderpass2ExtensionName};
+    vk::KHRCreateRenderpass2ExtensionName,
+    vk::KHRDynamicRenderingExtensionName
+};
 
 struct Vertex {
     glm::vec3 pos;
