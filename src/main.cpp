@@ -925,7 +925,7 @@ class HelloTriangleApplication {
                 };
                 vertexBufferMemory = vk::raii::DeviceMemory( device, memoryAllocateInfo );
 
-                vertexBuffer.bindMemory(*vertexBufferMemory, 0);
+                vertexBuffer.bindMemory(vertexBufferMemory, 0);
 
                 copyBuffer(stagingBuffer, vertexBuffer, stagingInfo.size);
             }
@@ -1045,7 +1045,7 @@ class HelloTriangleApplication {
                     .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties)
                 };
                 bufferMemory = vk::raii::DeviceMemory(device, allocInfo);
-                buffer.bindMemory(*bufferMemory, 0);
+                buffer.bindMemory(bufferMemory, 0);
             }
 
 
@@ -1132,7 +1132,6 @@ class HelloTriangleApplication {
                 };
 
                 commandBuffers[currentFrame].beginRendering(renderingInfo);
-                commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline);
                 commandBuffers[currentFrame].setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
                 commandBuffers[currentFrame].setScissor(0, vk::Rect2D(vk::Offset2D(0,0), swapChainExtent));
                 commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);

@@ -89,7 +89,7 @@ endfunction()
 
 add_slang_shader_target( slang_shaders "${CMAKE_CURRENT_LIST_DIR}/shaders/shader.slang")
 add_dependencies(${PROJECT_NAME} slang_shaders)
-set(GENERATED_SHADER_SPD "${CMAKE_BINARY_DIR}/shaders/slang.spv" CACHE FILEPATH "Generated SPIR-V shader")
+set(GENERATED_SHADER_SPD "${CMAKE_BINARY_DIR}/shaders/slang_shaders.spv" CACHE FILEPATH "Generated SPIR-V shader")
 
 # Copy texture files to the build directory
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/textures DESTINATION ${CMAKE_BINARY_DIR})
